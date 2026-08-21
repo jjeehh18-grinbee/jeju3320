@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>성산일출봉 돌하르방 FPS</title>
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; width: 100%; height: 100%; background: #000; font-family: 'Malgun Gothic', sans-serif; }
+  canvas { display: block; }
+
+  #hud {
+    position: fixed; inset: 0; pointer-events: none; color: #fff; text-shadow: 0 0 4px rgba(0,0,0,0.9);
+    display: none;
+  }
+  #crosshair {
+    position: absolute; top: 50%; left: 50%; width: 22px; height: 22px; transform: translate(-50%, -50%);
+  }
+  #crosshair::before, #crosshair::after {
+    content: ''; position: absolute; background: #fff; box-shadow: 0 0 3px rgba(0,0,0,0.9);
+  }
+  #crosshair::before { top: 50%; left: 0; width: 100%; height: 2px; transform: translateY(-1px); }
+  #crosshair::after { left: 50%; top: 0; width: 2px; height: 100%; transform: translateX(-1px); }
+
+  #topbar {
+    position: absolute; top: 16px; left: 16px; right: 16px; display: flex; justify-content: space-between; font-size: 20px; font-weight: bold;
+  }
+  #healthWrap {
+    width: 220px;
+  }
+  #healthLabel { font-size: 14px; margin-bottom: 4px; }
+  #healthBarBg {
+    width: 100%; height: 18px; background: rgba(0,0,0,0.5); border: 2px solid #fff; border-radius: 4px; overflow: hidden;
+  }
+  #healthBarFill {
+    height: 100%; width: 100%; background: linear-gradient(90deg, #ff4747, #ff8c47); transition: width 0.15s ease;
+  }
+  #stats { text-align: right; }
+  #ammo { font-size: 20px; }
+  #score { font-size: 20px; margin-top: 4px; }
+  #waveInfo { position: absolute; top: 90px; left: 16px; font-size: 16px; opacity: 0.85; }
+
+  #hitFlash {
+    position: fixed; inset: 0; background: rgba(255,0,0,0.35); opacity: 0; pointer-events: none; transition: opacity 0.1s ease;
+  }
+  #hitMarker {
+    position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; transform: translate(-50%,-50%); opacity: 0; pointer-events: none;
+  }
+  #hitMarker::before, #hitMarker::after {
+    content: ''; position: absolute; width: 12px; height: 2px; background: #ffdd44;
+  }
+  #hitMarker::before { top: 0; left: 0; transform: rotate(45deg); }
+  #hitMarker::after { top: 0; right: 0; transform: rotate(-45deg); }
+  #hitMarker span { position: absolute; width: 12px; height: 2px; background: #ffdd44; }
+  #hitMarker span:nth-child(1) { bottom: 0; left: 0; transform: rotate(-45deg); }
+  #hitMarker span:nth-child(2) { bottom: 0; right: 0; transform: rotate(45deg); }
+
+  #overlay {
+    position: fixed; inset: 0; background: radial-gradient(ellipse at center, rgba(20,30,50,0.9), rgba(5,8,15,0.97));
+    display: flex; align-items: center; justify-content: center; flex-direction: column; color: #fff; text-align: center; z-index: 10;
+  }
+  #overlay h1 { font-size: 42px; margin-bottom: 8px; letter-spacing: 2px; }
+  #overlay h2 { font-size: 24px; margin-top: 0; color: #ffd27a; font-weight: normal; }
+  #overlay p { line-height: 1.8; font-size: 16px; opacity: 0.9; max-width: 520px; }
+  #overlay .key { display: inline-block; background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.4); border-radius: 4px; padding: 1px 8px; margin: 0 2px; font-weight: bold; }
+  #startBtn, #restartBtn {
+    margin-top: 24px; padding: 14px 40px; font-size: 20px; font-weight: bold; color: #1a1005; background: linear-gradient(180deg, #ffe08a, #ffbf47);
+    border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  }
+  #startBtn:hover, #restartBtn:hover { filter: brightness(1.08); }
+  #gameOverScreen { display: none; }
+  #finalScore { font-size: 28px; color: #7cffb2; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<div id="hud">
+  <div id="crosshair"></div>
+  <div id="hitMarker"><span></span><span></span></div>
+  <div id="topbar">
+    <div id="healthWrap">
+      <div id="healthLabel">체력 HEALTH</div>
+      <div id="healthBarBg"><div id="healthBarFill"></div></div>
+    </div>
+    <div id="stats">
+      <div id="ammo">🔫 6 / 6</div>
+      <div id="score">점수: 0</div>
+    </div>
+  </div>
+  <div id="waveInfo">웨이브 1</div>
+</div>
+<div id="hitFlash"></div>
+
+<div id="overlay">
+  <div id="startScreen">
+    <h1>🗿 성산일출봉 돌하르방 FPS 🗿</h1>
+    <h2>Seongsan Ilchulbong Defense</h2>
+    <p>
+      제주 성산일출봉에 돌하르방들이 나타났다! 다가오는 돌하르방을 쏴서 막아내라.<br><br>
+      <span class="key">W A S D</span> 이동 &nbsp;
+      <span class="key">Space</span> 점프 &nbsp;
+      <span class="key">Shift</span> 달리기<br>
+      <span class="key">마우스</span> 시점 조작 &nbsp;
+      <span class="key">좌클릭</span> 사격 &nbsp;
+      <span class="key">R</span> 재장전<br><br>
+      돌하르방이 가까이 오면 체력이 깎입니다. 체력이 0이 되면 게임 오버!
+    </p>
+    <button id="startBtn">클릭하여 시작</button>
+  </div>
+  <div id="gameOverScreen">
+    <h1>게임 오버</h1>
+    <div id="finalScore">최종 점수: 0</div>
+    <p>돌하르방들에게 성산일출봉을 내주고 말았다...</p>
+    <button id="restartBtn">다시 도전하기</button>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
+
+// ------------------------------------------------------------------
+// Basic setup
+// ------------------------------------------------------------------
+const scene = new THREE.Scene();
+const ISLAND_RADIUS = 70;
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+camera.position.set(0, 1.7, 20);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+document.body.appendChild(renderer.domElement);
+
+// Sky gradient
+scene.background = new THREE.Color(0x9fd8ff);
+scene.fog = new THREE.Fog(0xbfe3ff, 40, 180);
+
+function makeSkyDome() {
+  const skyGeo = new THREE.SphereGeometry(400, 32, 16);
+  const skyMat = new THREE.ShaderMaterial({
+    side: THREE.BackSide,
+    uniforms: {
+      topColor: { value: new THREE.Color(0x4c9be8) },
+      bottomColor: { value: new THREE.Color(0xdff2ff) },
+    },
+    vertexShader: `
+      varying vec3 vWorldPos;
+      void main() {
+        vec4 wp = modelMatrix * vec4(position, 1.0);
+        vWorldPos = wp.xyz;
+        gl_Position = projectionMatrix * viewMatrix * wp;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vWorldPos;
+      uniform vec3 topColor;
+      uniform vec3 bottomColor;
+      void main() {
+        float h = normalize(vWorldPos).y;
+        float t = clamp(h * 0.7 + 0.4, 0.0, 1.0);
+        gl_FragColor = vec4(mix(bottomColor, topColor, t), 1.0);
+      }
+    `
+  });
+  scene.add(new THREE.Mesh(skyGeo, skyMat));
+}
+makeSkyDome();
+
+// Lights
+const hemi = new THREE.HemisphereLight(0xddeeff, 0x557733, 0.9);
+scene.add(hemi);
+const sun = new THREE.DirectionalLight(0xfff2d0, 1.3);
+sun.position.set(60, 90, 20);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -90;
+sun.shadow.camera.right = 90;
+sun.shadow.camera.top = 90;
+sun.shadow.camera.bottom = -90;
+sun.shadow.camera.far = 250;
+scene.add(sun);
+scene.add(sun.target);
+
+// ------------------------------------------------------------------
+// Texture helpers (procedural canvas textures, no external assets)
+// ------------------------------------------------------------------
+function noiseCanvas(w, h, baseColor, variance, cellSize = 4) {
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = `rgb(${baseColor.join(',')})`;
+  ctx.fillRect(0, 0, w, h);
+  for (let y = 0; y < h; y += cellSize) {
+    for (let x = 0; x < w; x += cellSize) {
+      const v = (Math.random() - 0.5) * variance;
+      const r = Math.min(255, Math.max(0, baseColor[0] + v));
+      const g = Math.min(255, Math.max(0, baseColor[1] + v));
+      const b = Math.min(255, Math.max(0, baseColor[2] + v));
+      ctx.fillStyle = `rgb(${r|0},${g|0},${b|0})`;
+      ctx.fillRect(x, y, cellSize, cellSize);
+    }
+  }
+  return canvas;
+}
+
+const grassTex = new THREE.CanvasTexture(noiseCanvas(256, 256, [86, 138, 70], 45, 3));
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+grassTex.repeat.set(24, 24);
+
+const rockTex = new THREE.CanvasTexture(noiseCanvas(256, 256, [120, 112, 100], 35, 5));
+rockTex.wrapS = rockTex.wrapT = THREE.RepeatWrapping;
+rockTex.repeat.set(6, 3);
+
+const stoneTex = new THREE.CanvasTexture(noiseCanvas(128, 128, [110, 108, 104], 25, 3));
+stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping;
+
+// ------------------------------------------------------------------
+// Terrain: ocean + island ground
+// ------------------------------------------------------------------
+const oceanGeo = new THREE.PlaneGeometry(2000, 2000);
+const oceanMat = new THREE.MeshStandardMaterial({ color: 0x1c6fa8, roughness: 0.35, metalness: 0.1 });
+const ocean = new THREE.Mesh(oceanGeo, oceanMat);
+ocean.rotation.x = -Math.PI / 2;
+ocean.position.y = -0.3;
+ocean.receiveShadow = true;
+scene.add(ocean);
+
+const groundGeo = new THREE.CircleGeometry(ISLAND_RADIUS, 64);
+const groundMat = new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// rocky cliff edge ring
+const cliffGeo = new THREE.CylinderGeometry(ISLAND_RADIUS + 1, ISLAND_RADIUS - 3, 3, 64, 1, true);
+const cliffMat = new THREE.MeshStandardMaterial({ map: rockTex, roughness: 1, side: THREE.DoubleSide });
+const cliff = new THREE.Mesh(cliffGeo, cliffMat);
+cliff.position.y = -1.5;
+cliff.receiveShadow = true;
+cliff.castShadow = true;
+scene.add(cliff);
+
+// ------------------------------------------------------------------
+// Seongsan Ilchulbong: iconic flat-crater tuff cone in the background
+// ------------------------------------------------------------------
+function buildIlchulbong() {
+  const group = new THREE.Group();
+
+  // Main cone body (truncated, wider at base, gentle taper)
+  const bodyGeo = new THREE.CylinderGeometry(34, 58, 46, 24, 4, true);
+  // Nudge vertices for a rugged silhouette
+  const posAttr = bodyGeo.attributes.position;
+  for (let i = 0; i < posAttr.count; i++) {
+    const x = posAttr.getX(i), y = posAttr.getY(i), z = posAttr.getZ(i);
+    const n = Math.sin(x * 0.4) * Math.cos(z * 0.5) * 1.6 + Math.sin(y * 0.8) * 0.8;
+    const len = Math.sqrt(x * x + z * z) || 1;
+    posAttr.setX(i, x + (x / len) * n);
+    posAttr.setZ(i, z + (z / len) * n);
+  }
+  bodyGeo.computeVertexNormals();
+  const bodyMat = new THREE.MeshStandardMaterial({ map: rockTex, color: 0x8a7a5c, roughness: 1, side: THREE.DoubleSide });
+  const body = new THREE.Mesh(bodyGeo, bodyMat);
+  body.position.y = 23;
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+
+  // Flat crater rim top (slightly concave bowl)
+  const rimGeo = new THREE.CylinderGeometry(34, 30, 6, 24, 1, true);
+  const rimMat = new THREE.MeshStandardMaterial({ map: rockTex, color: 0x6e6248, roughness: 1, side: THREE.DoubleSide });
+  const rim = new THREE.Mesh(rimGeo, rimMat);
+  rim.position.y = 46;
+  rim.receiveShadow = true;
+  rim.castShadow = true;
+  group.add(rim);
+
+  const craterFloorGeo = new THREE.CircleGeometry(30, 24);
+  const craterFloorMat = new THREE.MeshStandardMaterial({ color: 0x556b3f, roughness: 1 });
+  const craterFloor = new THREE.Mesh(craterFloorGeo, craterFloorMat);
+  craterFloor.rotation.x = -Math.PI / 2;
+  craterFloor.position.y = 43.2;
+  craterFloor.receiveShadow = true;
+  group.add(craterFloor);
+
+  // Grassy patches on slopes (simple green cones scattered)
+  const patchMat = new THREE.MeshStandardMaterial({ color: 0x5f8a4a, roughness: 1 });
+  for (let i = 0; i < 40; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const r = 30 + Math.random() * 25;
+    const h = 4 + Math.random() * 30;
+    const patch = new THREE.Mesh(new THREE.SphereGeometry(1.2 + Math.random() * 2, 6, 5), patchMat);
+    patch.position.set(Math.cos(a) * r, h, Math.sin(a) * r);
+    patch.scale.set(1, 0.4, 1);
+    group.add(patch);
+  }
+
+  group.position.set(0, 0, -110);
+  group.scale.set(1.3, 1.3, 1.3);
+  return group;
+}
+scene.add(buildIlchulbong());
+
+// distant small islets for atmosphere
+function addIslet(x, z, s) {
+  const m = new THREE.Mesh(
+    new THREE.ConeGeometry(6 * s, 10 * s, 10),
+    new THREE.MeshStandardMaterial({ color: 0x4a5a3f, roughness: 1 })
+  );
+  m.position.set(x, 3 * s, z);
+  scene.add(m);
+}
+addIslet(-140, -60, 1.4);
+addIslet(150, -90, 1.8);
+addIslet(-90, -160, 1.1);
+
+// ------------------------------------------------------------------
+// Sun disc (sunrise mood, matching Ilchulbong = "Sunrise Peak")
+// ------------------------------------------------------------------
+const sunDisc = new THREE.Mesh(
+  new THREE.SphereGeometry(8, 24, 24),
+  new THREE.MeshBasicMaterial({ color: 0xffe9b0 })
+);
+sunDisc.position.set(60, 55, -260);
+scene.add(sunDisc);
+
+// ------------------------------------------------------------------
+// Player controller
+// ------------------------------------------------------------------
+const controls = new PointerLockControls(camera, renderer.domElement);
+scene.add(controls.getObject());
+
+const move = { forward: false, back: false, left: false, right: false, sprint: false };
+let velocityY = 0;
+let onGround = true;
+const PLAYER_HEIGHT = 1.7;
+const WALK_SPEED = 9;
+const SPRINT_SPEED = 15;
+const GRAVITY = -22;
+const JUMP_SPEED = 8.5;
+
+document.addEventListener('keydown', (e) => {
+  switch (e.code) {
+    case 'KeyW': move.forward = true; break;
+    case 'KeyS': move.back = true; break;
+    case 'KeyA': move.left = true; break;
+    case 'KeyD': move.right = true; break;
+    case 'ShiftLeft': case 'ShiftRight': move.sprint = true; break;
+    case 'Space':
+      if (onGround) { velocityY = JUMP_SPEED; onGround = false; }
+      break;
+    case 'KeyR': reload(); break;
+  }
+});
+document.addEventListener('keyup', (e) => {
+  switch (e.code) {
+    case 'KeyW': move.forward = false; break;
+    case 'KeyS': move.back = false; break;
+    case 'KeyA': move.left = false; break;
+    case 'KeyD': move.right = false; break;
+    case 'ShiftLeft': case 'ShiftRight': move.sprint = false; break;
+  }
+});
+
+// ------------------------------------------------------------------
+// Gun model (attached to camera)
+// ------------------------------------------------------------------
+const gun = new THREE.Group();
+const gunMat = new THREE.MeshStandardMaterial({ color: 0x2b2b2f, roughness: 0.4, metalness: 0.6 });
+const gunBody = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.14, 0.55), gunMat);
+gunBody.position.set(0, 0, 0);
+const gunBarrel = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.35, 10), gunMat);
+gunBarrel.rotation.x = Math.PI / 2;
+gunBarrel.position.set(0, 0.02, -0.4);
+const gunGrip = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.28, 0.12), gunMat);
+gunGrip.position.set(0, -0.16, 0.18);
+gun.add(gunBody, gunBarrel, gunGrip);
+gun.position.set(0.28, -0.28, -0.6);
+camera.add(gun);
+scene.add(camera);
+
+const muzzleFlash = new THREE.PointLight(0xffcc66, 0, 6);
+muzzleFlash.position.set(0.28, -0.2, -1.1);
+camera.add(muzzleFlash);
+
+// ------------------------------------------------------------------
+// Dolhareubang (stone grandfather statue) mob factory
+// ------------------------------------------------------------------
+function createDolhareubang() {
+  const g = new THREE.Group();
+  const stoneMat = new THREE.MeshStandardMaterial({ map: stoneTex, color: 0x9c9483, roughness: 1 });
+  const darkMat = new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.9 });
+
+  // Body: bulging cylindrical torso
+  const body = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.68, 1.7, 14), stoneMat);
+  body.position.y = 1.05;
+  body.castShadow = true;
+  g.add(body);
+
+  // Head
+  const head = new THREE.Mesh(new THREE.SphereGeometry(0.5, 16, 12), stoneMat);
+  head.position.y = 2.15;
+  head.scale.set(1, 1.05, 0.95);
+  head.castShadow = true;
+  g.add(head);
+
+  // Mushroom hat (classic dolhareubang hat: cylinder + brim)
+  const hatBrim = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.62, 0.14, 16), stoneMat);
+  hatBrim.position.y = 2.56;
+  g.add(hatBrim);
+  const hatTop = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.5, 0.35, 16), stoneMat);
+  hatTop.position.y = 2.78;
+  g.add(hatTop);
+
+  // Bulging eyes
+  const eyeGeo = new THREE.SphereGeometry(0.11, 10, 8);
+  const eyeL = new THREE.Mesh(eyeGeo, darkMat);
+  eyeL.position.set(-0.19, 2.2, 0.42);
+  const eyeR = eyeL.clone();
+  eyeR.position.x = 0.19;
+  g.add(eyeL, eyeR);
+
+  // Big nose
+  const nose = new THREE.Mesh(new THREE.ConeGeometry(0.16, 0.4, 10), stoneMat);
+  nose.rotation.x = Math.PI / 2.1;
+  nose.position.set(0, 2.08, 0.5);
+  g.add(nose);
+
+  // Mouth (flat dark bar)
+  const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.05, 0.05), darkMat);
+  mouth.position.set(0, 1.9, 0.48);
+  g.add(mouth);
+
+  // Hands resting on belly
+  const handGeo = new THREE.SphereGeometry(0.18, 10, 8);
+  const handL = new THREE.Mesh(handGeo, stoneMat);
+  handL.position.set(-0.35, 1.1, 0.45);
+  const handR = handL.clone();
+  handR.position.x = 0.35;
+  g.add(handL, handR);
+
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+
+  return g;
+}
+
+// ------------------------------------------------------------------
+// Mob management
+// ------------------------------------------------------------------
+const mobs = [];
+const MAX_HEALTH = 100;
+const clock = new THREE.Clock();
+
+let player = { health: MAX_HEALTH, ammo: 6, maxAmmo: 6, reserve: 24, reloading: false, score: 0, alive: true };
+let wave = 1;
+let mobsToSpawnThisWave = 5;
+let mobsAliveOrPending = 0;
+let spawnTimer = 0;
+let attackCooldowns = new Map();
+
+function spawnMob() {
+  const mesh = createDolhareubang();
+  const angle = Math.random() * Math.PI * 2;
+  const dist = 30 + Math.random() * (ISLAND_RADIUS - 34);
+  mesh.position.set(Math.cos(angle) * dist, 0, Math.sin(angle) * dist - 10);
+  mesh.rotation.y = Math.random() * Math.PI * 2;
+  scene.add(mesh);
+  const speed = 1.0 + Math.random() * 0.6 + wave * 0.05;
+  const hp = 30 + wave * 6;
+  const mob = { mesh, hp, maxHp: hp, speed, state: 'walk', dead: false };
+  mobs.push(mob);
+  mobsAliveOrPending++;
+}
+
+function startWave() {
+  mobsToSpawnThisWave = 4 + wave * 2;
+  spawnTimer = 0;
+  document.getElementById('waveInfo').textContent = `웨이브 ${wave}`;
+}
+
+// ------------------------------------------------------------------
+// Shooting
+// ------------------------------------------------------------------
+const raycaster = new THREE.Raycaster();
+let shootFlashTimer = 0;
+
+function reload() {
+  if (player.reloading || player.ammo === player.maxAmmo || player.reserve <= 0) return;
+  player.reloading = true;
+  updateHud();
+  setTimeout(() => {
+    const needed = player.maxAmmo - player.ammo;
+    const take = Math.min(needed, player.reserve);
+    player.ammo += take;
+    player.reserve -= take;
+    player.reloading = false;
+    updateHud();
+  }, 900);
+}
+
+function shoot() {
+  if (!controls.isLocked || !player.alive) return;
+  if (player.reloading) return;
+  if (player.ammo <= 0) { reload(); return; }
+
+  player.ammo--;
+  shootFlashTimer = 0.06;
+  gunBarrel.position.z = -0.32;
+  updateHud();
+
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const meshes = mobs.map(m => m.mesh);
+  const intersects = raycaster.intersectObjects(meshes, true);
+  if (intersects.length > 0) {
+    let hitObj = intersects[0].object;
+    let mob = mobs.find(m => {
+      let found = false;
+      m.mesh.traverse(o => { if (o === hitObj) found = true; });
+      return found;
+    });
+    if (mob) {
+      const isHeadshot = hitObj.position.y > 1.9 || intersects[0].point.y > mob.mesh.position.y + 1.9;
+      const dmg = isHeadshot ? 40 : 20;
+      mob.hp -= dmg;
+      flashHitMarker();
+      if (mob.hp <= 0 && !mob.dead) {
+        killMob(mob);
+      }
+    }
+  }
+}
+
+function flashHitMarker() {
+  const hm = document.getElementById('hitMarker');
+  hm.style.opacity = '1';
+  clearTimeout(flashHitMarker._t);
+  flashHitMarker._t = setTimeout(() => { hm.style.opacity = '0'; }, 120);
+}
+
+function killMob(mob) {
+  mob.dead = true;
+  player.score += 100;
+  scene.remove(mob.mesh);
+  const idx = mobs.indexOf(mob);
+  if (idx >= 0) mobs.splice(idx, 1);
+  mobsAliveOrPending--;
+  updateHud();
+}
+
+renderer.domElement.addEventListener('mousedown', (e) => {
+  if (e.button === 0) {
+    if (!controls.isLocked) { controls.lock(); return; }
+    shoot();
+  }
+});
+
+// ------------------------------------------------------------------
+// Damage to player
+// ------------------------------------------------------------------
+function damagePlayer(amount) {
+  if (!player.alive) return;
+  player.health -= amount;
+  document.getElementById('hitFlash').style.opacity = '0.5';
+  setTimeout(() => { document.getElementById('hitFlash').style.opacity = '0'; }, 150);
+  if (player.health <= 0) {
+    player.health = 0;
+    player.alive = false;
+    endGame();
+  }
+  updateHud();
+}
+
+// ------------------------------------------------------------------
+// HUD
+// ------------------------------------------------------------------
+function updateHud() {
+  document.getElementById('healthBarFill').style.width = Math.max(0, player.health) + '%';
+  document.getElementById('ammo').textContent = player.reloading
+    ? '재장전 중...'
+    : `🔫 ${player.ammo} / ${player.maxAmmo}  (예비: ${player.reserve})`;
+  document.getElementById('score').textContent = `점수: ${player.score}`;
+}
+
+// ------------------------------------------------------------------
+// Start / Game Over flow
+// ------------------------------------------------------------------
+const overlay = document.getElementById('overlay');
+const startScreen = document.getElementById('startScreen');
+const gameOverScreen = document.getElementById('gameOverScreen');
+const hud = document.getElementById('hud');
+
+document.getElementById('startBtn').addEventListener('click', () => {
+  controls.lock();
+});
+document.getElementById('restartBtn').addEventListener('click', () => {
+  window.location.reload();
+});
+
+controls.addEventListener('lock', () => {
+  overlay.style.display = 'none';
+  hud.style.display = 'block';
+});
+controls.addEventListener('unlock', () => {
+  if (player.alive) {
+    overlay.style.display = 'flex';
+    startScreen.style.display = 'block';
+    gameOverScreen.style.display = 'none';
+  }
+});
+
+function endGame() {
+  controls.unlock();
+  overlay.style.display = 'flex';
+  startScreen.style.display = 'none';
+  gameOverScreen.style.display = 'flex';
+  document.getElementById('finalScore').textContent = `최종 점수: ${player.score}`;
+}
+
+startWave();
+updateHud();
+
+// ------------------------------------------------------------------
+// Main loop
+// ------------------------------------------------------------------
+function animate() {
+  requestAnimationFrame(animate);
+  const delta = Math.min(clock.getDelta(), 0.1);
+  const t = clock.elapsedTime;
+
+  if (controls.isLocked && player.alive) {
+    // Movement
+    const speed = move.sprint ? SPRINT_SPEED : WALK_SPEED;
+    const dir = new THREE.Vector3();
+    const forward = (move.forward ? 1 : 0) - (move.back ? 1 : 0);
+    const strafe = (move.right ? 1 : 0) - (move.left ? 1 : 0);
+    dir.set(strafe, 0, -forward);
+    if (dir.lengthSq() > 0) dir.normalize();
+
+    const camObj = controls.getObject();
+    const forwardVec = new THREE.Vector3();
+    camera.getWorldDirection(forwardVec);
+    forwardVec.y = 0; forwardVec.normalize();
+    const rightVec = new THREE.Vector3().crossVectors(forwardVec, new THREE.Vector3(0, 1, 0)).negate();
+
+    const moveVec = new THREE.Vector3();
+    moveVec.addScaledVector(forwardVec, forward);
+    moveVec.addScaledVector(rightVec, strafe);
+    if (moveVec.lengthSq() > 0) moveVec.normalize();
+
+    camObj.position.addScaledVector(moveVec, speed * delta);
+
+    // Gravity / jump
+    velocityY += GRAVITY * delta;
+    camObj.position.y += velocityY * delta;
+    if (camObj.position.y <= PLAYER_HEIGHT) {
+      camObj.position.y = PLAYER_HEIGHT;
+      velocityY = 0;
+      onGround = true;
+    }
+
+    // Keep player within island radius
+    const distFromCenter = Math.sqrt(camObj.position.x ** 2 + camObj.position.z ** 2);
+    if (distFromCenter > ISLAND_RADIUS - 2) {
+      const scale = (ISLAND_RADIUS - 2) / distFromCenter;
+      camObj.position.x *= scale;
+      camObj.position.z *= scale;
+    }
+
+    // Gun bob
+    const bobSpeed = moveVec.lengthSq() > 0 ? (move.sprint ? 14 : 9) : 0;
+    gun.position.y = -0.28 + (bobSpeed > 0 ? Math.sin(t * bobSpeed) * 0.02 : 0);
+    gun.position.x = 0.28 + (bobSpeed > 0 ? Math.cos(t * bobSpeed * 0.5) * 0.01 : 0);
+
+    // Recoil recovery
+    gunBarrel.position.z += (-0.4 - gunBarrel.position.z) * -0.3 + 0.3 * ( -0.4 - gunBarrel.position.z ) * -1;
+    gunBarrel.position.z += (-0.4 - gunBarrel.position.z) * 0.3;
+
+    // Muzzle flash decay
+    if (shootFlashTimer > 0) {
+      muzzleFlash.intensity = 3;
+      shootFlashTimer -= delta;
+    } else {
+      muzzleFlash.intensity = 0;
+    }
+
+    // Mob AI
+    const playerPos = camObj.position;
+    mobs.forEach(mob => {
+      const mpos = mob.mesh.position;
+      const toPlayer = new THREE.Vector3(playerPos.x - mpos.x, 0, playerPos.z - mpos.z);
+      const dist = toPlayer.length();
+      if (dist > 1.6) {
+        toPlayer.normalize();
+        mpos.addScaledVector(toPlayer, mob.speed * delta);
+        mob.mesh.rotation.y = Math.atan2(toPlayer.x, toPlayer.z);
+        mob.mesh.position.y = Math.sin(t * 4 + mpos.x) * 0.03 + Math.abs(Math.sin(t * 6)) * 0.05;
+      } else {
+        const last = attackCooldowns.get(mob) || 0;
+        if (t - last > 1.0) {
+          attackCooldowns.set(mob, t);
+          damagePlayer(8 + Math.floor(wave * 0.8));
+        }
+      }
+    });
+
+    // Wave spawning
+    spawnTimer -= delta;
+    if (mobsToSpawnThisWave > 0 && spawnTimer <= 0) {
+      spawnMob();
+      mobsToSpawnThisWave--;
+      spawnTimer = 1.1;
+    }
+    if (mobsToSpawnThisWave === 0 && mobsAliveOrPending <= 0) {
+      wave++;
+      startWave();
+    }
+  }
+
+  renderer.render(scene, camera);
+}
+animate();
+
+// ------------------------------------------------------------------
+// Resize
+// ------------------------------------------------------------------
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
+</body>
+</html>
